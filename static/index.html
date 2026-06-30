@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>英汉翻译系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        body { font-family: 'Microsoft YaHei', system-ui, sans-serif; }
+        .glass {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(16px);
+        }
+        .dark .glass {
+            background: rgba(30, 30, 40, 0.85);
+        }
+        textarea {
+            transition: all 0.3s ease;
+        }
+        textarea:focus {
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.3);
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-950 dark:to-slate-900 min-h-screen flex items-center justify-center p-6">
+    <div class="max-w-5xl w-full">
+        <!-- 标题 + 模型切换 -->
+        <div class="text-center mb-10">
+            <div class="inline-flex items-center gap-4 mb-3">
+                <i class="fa-solid fa-language text-5xl text-blue-600 dark:text-blue-400"></i>
+                <h1 class="text-5xl font-bold tracking-tighter text-slate-800 dark:text-white">
+                    英汉翻译系统
+                </h1>
+            </div>
+            <p class="text-lg text-slate-600 dark:text-slate-400 mb-4">
+                mBART-50 + LoRA • 支持长文本 + 文件翻译
+            </p>
+
+            <div class="flex items-center justify-center gap-3">
+                <span class="text-sm font-medium text-slate-600 dark:text-slate-400">当前模型：</span>
+                <select id="model-select" onchange="switchModel()"
+                        class="bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-2xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="news">新闻领域</option>
+                    <option value="dialog">日常对话</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="glass rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-700">
+            <div class="p-10">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- 输入框 -->
+                    <div>
+                        <div class="flex items-center gap-3 mb-4">
+                            <i class="fa-solid fa-arrow-right-from-bracket text-blue-600"></i>
+                            <span class="text-lg font-semibold text-slate-700 dark:text-slate-200">英文原文</span>
+                        </div>
+                        <textarea id="input" rows="10"
+                            class="w-full resize-none bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-3xl p-6 text-lg focus:outline-none"
+                            placeholder="请输入英文句子或段落..."></textarea>
+                    </div>
+
+                    <!-- 输出框 -->
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-3">
+                                <i class="fa-solid fa-arrow-right-to-bracket text-emerald-600"></i>
+                                <span class="text-lg font-semibold text-slate-700 dark:text-slate-200">中文翻译</span>
+                            </div>
+                            <div class="flex gap-3">
+                                <button onclick="copyResult()"
+                                    class="flex items-center gap-2 text-slate-500 hover:text-emerald-600 transition-colors">
+                                    <i class="fa-solid fa-copy"></i>
+                                    <span class="text-sm">复制</span>
+                                </button>
+                                <!-- 仅文件翻译时显示下载按钮 -->
+                                <button onclick="downloadTranslatedFile()"
+                                    id="download-btn"
+                                    class="flex items-center gap-2 text-slate-500 hover:text-violet-600 transition-colors hidden">
+                                    <i class="fa-solid fa-download"></i>
+                                    <span class="text-sm">下载结果</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="result"
+                            class="w-full min-h-[280px] bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-3xl p-6 text-lg leading-relaxed whitespace-pre-wrap overflow-auto">
+                            翻译结果将在这里显示...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 立即翻译按钮 -->
+                <button onclick="translateText()"
+                    class="mt-10 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 hover:brightness-110 text-white font-semibold py-5 rounded-3xl text-xl transition-all active:scale-[0.985] flex items-center justify-center gap-3 shadow-xl">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span>立即翻译</span>
+                </button>
+
+                <!-- 文件上传区域 -->
+                <div class="mt-12 pt-8 border-t border-slate-200 dark:border-slate-700">
+                    <div class="flex items-center gap-3 mb-5">
+                        <i class="fa-solid fa-file-lines text-2xl text-violet-600"></i>
+                        <span class="text-xl font-semibold text-slate-700 dark:text-slate-200">上传 TXT 文件批量翻译</span>
+                    </div>
+
+                    <div class="flex gap-5 items-center">
+                        <label id="file-label"
+                               class="flex-1 cursor-pointer bg-white dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-violet-500 rounded-3xl p-12 text-center transition-all">
+                            <i class="fa-solid fa-cloud-arrow-up text-6xl text-slate-400 mb-4 block"></i>
+                            <span id="file-name" class="text-lg text-slate-500 dark:text-slate-400">点击上传 TXT 文件</span>
+                            <input type="file" id="file-upload" accept=".txt" class="hidden">
+                        </label>
+
+                        <button onclick="translateFile()"
+                                id="translate-file-btn"
+                                class="px-12 py-6 bg-gradient-to-r from-violet-600 to-purple-600 hover:brightness-110 text-white font-semibold rounded-3xl text-lg transition-all flex items-center gap-3 h-fit">
+                            <i class="fa-solid fa-language"></i>
+                            <span>开始翻译文件</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 翻译历史区域 -->
+                <div class="mt-12">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <i class="fa-solid fa-clock-rotate-left text-indigo-500"></i>
+                            <span class="text-lg font-semibold text-slate-700 dark:text-slate-200">翻译历史</span>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="getHistory()" class="text-sm px-4 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded-xl hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
+                                刷新历史
+                            </button>
+                            <button onclick="clearHistory()" class="text-sm px-4 py-2 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-300 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors">
+                                清空历史
+                            </button>
+                        </div>
+                    </div>
+                    <div id="history-list" class="max-h-[320px] overflow-auto space-y-3">
+                        <div class="text-center text-slate-400 py-10">暂无翻译历史</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- 底部状态栏 -->
+            <div class="bg-slate-100 dark:bg-slate-900 px-10 py-5 text-sm text-slate-500 dark:text-slate-400 flex justify-between items-center border-t border-slate-200 dark:border-slate-700">
+                <div id="current-model-display">当前模型：新闻领域</div>
+                <div id="status" class="text-emerald-600 dark:text-emerald-400 font-medium">就绪</div>
+            </div>
+        </div>
+
+        <div class="text-center mt-8 text-slate-400 dark:text-slate-500 text-sm">
+            Powered by FastAPI + WZU Translation Engine
+        </div>
+    </div>
+
+    <script>
+        // ===================== 全局变量 =====================
+        let selectedFile = null;
+        let currentDownloadContent = "";
+        let currentDownloadFilename = "";
+
+        // ===================== 单文本翻译（不显示下载按钮） =====================
+        async function translateText() {
+            const inputText = document.getElementById('input').value.trim();
+            const resultDiv = document.getElementById('result');
+            const status = document.getElementById('status');
+            const downloadBtn = document.getElementById('download-btn');
+
+            if (!inputText) {
+                resultDiv.innerHTML = '<span class="text-rose-500">请输入英文内容</span>';
+                downloadBtn.classList.add('hidden');
+                return;
+            }
+
+            resultDiv.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-52 text-slate-400">
+                    <i class="fa-solid fa-spinner fa-spin text-4xl mb-4"></i>
+                    <span>模型正在推理，请稍候...</span>
+                </div>`;
+            status.textContent = "翻译中...";
+            downloadBtn.classList.add('hidden');
+
+            try {
+                const response = await fetch('/translate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: inputText })
+                });
+
+                const data = await response.json();
+
+                resultDiv.textContent = data.output || "翻译失败，请重试";
+                status.textContent = "完成";
+                getHistory();
+            } catch (error) {
+                resultDiv.innerHTML = `<span class="text-rose-500">请求失败，请检查后端服务是否运行</span>`;
+                status.textContent = "错误";
+            }
+        }
+
+        // ===================== 文件翻译（翻译后显示下载按钮） =====================
+        async function translateFile() {
+            if (!selectedFile) {
+                alert("请先选择一个 .txt 文件");
+                return;
+            }
+
+            const btn = document.getElementById('translate-file-btn');
+            const originalBtnText = btn.innerHTML;
+            const downloadBtn = document.getElementById('download-btn');
+            const currentModel = document.getElementById('model-select').value;
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 正在翻译文件...`;
+            downloadBtn.classList.add('hidden');
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            formData.append('model_name', currentModel);
+
+            try {
+                const response = await fetch('/translate_file', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.status === "success") {
+                    document.getElementById('result').innerHTML = `
+                        <div class="mb-4 text-emerald-600 font-medium">
+                            ✅ 文件翻译完成：${data.filename}（${data.used_model}）
+                        </div>
+                        <div class="whitespace-pre-wrap text-lg leading-relaxed p-5 bg-slate-50 dark:bg-slate-900 rounded-2xl">
+                            ${data.translated}
+                        </div>
+                    `;
+
+                    // 保存下载信息
+                    if (data.download_content) {
+                        currentDownloadContent = data.download_content;
+                        currentDownloadFilename = `${data.filename.replace('.txt', '')}_translated.txt`;
+                        downloadBtn.classList.remove('hidden');
+                    }
+
+                    getHistory();
+                } else {
+                    alert("翻译失败：" + (data.detail || "未知错误"));
+                }
+            } catch (error) {
+                alert("请求失败，请检查后端是否运行");
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalBtnText;
+            }
+        }
+
+        // ===================== 下载函数（仅文件翻译可用） =====================
+        async function downloadTranslatedFile() {
+            if (!currentDownloadContent) {
+                alert("没有可下载的内容");
+                return;
+            }
+
+            try {
+                const response = await fetch('/download_result', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content: currentDownloadContent,
+                        filename: currentDownloadFilename
+                    })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = currentDownloadFilename;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                } else {
+                    alert("下载失败");
+                }
+            } catch (error) {
+                alert("下载请求失败，请检查后端服务是否运行");
+                console.error(error);
+            }
+        }
+
+        // ===================== 复制功能 =====================
+        function copyResult() {
+            const resultDiv = document.getElementById('result');
+            let textToCopy = resultDiv.innerText.trim();
+
+            if (textToCopy.includes("文件翻译完成")) {
+                const lines = textToCopy.split('\n');
+                let startIndex = 0;
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i].trim();
+                    if (line && !line.includes("文件翻译完成") && !line.includes(".txt")) {
+                        startIndex = i;
+                        break;
+                    }
+                }
+                textToCopy = lines.slice(startIndex).join('\n').trim();
+            }
+
+            if (!textToCopy) return;
+
+            navigator.clipboard.writeText(textToCopy).then(() => {
+                const originalHTML = resultDiv.innerHTML;
+                resultDiv.innerHTML = `
+                    <span class="text-emerald-500 flex items-center gap-2">
+                        <i class="fa-solid fa-check"></i>已复制到剪贴板
+                    </span>`;
+                setTimeout(() => resultDiv.innerHTML = originalHTML, 1800);
+            });
+        }
+
+        // ===================== 文件上传处理 =====================
+        document.getElementById('file-upload').addEventListener('change', function(e) {
+            if (e.target.files.length > 0) {
+                selectedFile = e.target.files[0];
+                document.getElementById('file-name').textContent = selectedFile.name;
+                document.getElementById('file-name').classList.add('text-violet-600', 'dark:text-violet-400');
+            }
+        });
+
+        // ===================== 模型切换 =====================
+        async function switchModel() {
+            const select = document.getElementById('model-select');
+            const modelKey = select.value;
+            const status = document.getElementById('status');
+            const modelDisplay = document.getElementById('current-model-display');
+
+            status.textContent = "切换模型中...";
+
+            try {
+                const res = await fetch('/switch_model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model_name: modelKey })
+                });
+
+                const data = await res.json();
+
+                if (data.status === "success") {
+                    modelDisplay.textContent = `当前模型：${data.message.replace('已切换到 ', '')}`;
+                    status.innerHTML = `<span class="text-emerald-600 flex items-center gap-2"><i class="fa-solid fa-check"></i>切换成功</span>`;
+
+                    setTimeout(() => {
+                        status.textContent = "就绪";
+                    }, 1500);
+                }
+            } catch (error) {
+                status.innerHTML = `<span class="text-rose-500">切换失败</span>`;
+                console.error(error);
+            }
+        }
+
+        // ===================== 历史记录 =====================
+        async function getHistory() {
+            const list = document.getElementById('history-list');
+            try {
+                const res = await fetch('/get_history', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+
+                if (data.count === 0) {
+                    list.innerHTML = '<div class="text-center text-slate-400 py-10">暂无翻译历史</div>';
+                    return;
+                }
+
+                list.innerHTML = '';
+                data.history.forEach(item => {
+                    const itemHTML = `
+                    <div class="p-4 bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl">
+                        <div class="flex justify-between text-xs text-slate-400 mb-2">
+                            <span>ID: ${item.id}</span>
+                            <span>${item.time}</span>
+                        </div>
+                        <div class="text-sm text-slate-700 dark:text-slate-300 mb-1">
+                            <span class="font-medium text-blue-600 dark:text-blue-400">原文：</span>${item.input}
+                        </div>
+                        <div class="text-sm text-slate-700 dark:text-slate-300">
+                            <span class="font-medium text-emerald-600 dark:text-emerald-400">译文：</span>${item.output}
+                        </div>
+                    </div>`;
+                    list.innerHTML += itemHTML;
+                });
+            } catch (e) {
+                list.innerHTML = '<div class="text-center text-rose-400 py-10">获取历史失败</div>';
+            }
+        }
+
+        async function clearHistory() {
+            if (!confirm("确定要清空所有翻译历史吗？")) return;
+            await fetch('/clear_history', { method: 'POST' });
+            getHistory();
+        }
+
+        // Ctrl + Enter 快捷键
+        document.getElementById('input').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                translateText();
+            }
+        });
+
+        // 页面加载初始化
+        window.onload = function() {
+            getHistory();
+            document.getElementById('current-model-display').textContent = "当前模型：新闻领域";
+        };
+    </script>
+</body>
+</html>
